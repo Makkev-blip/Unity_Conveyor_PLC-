@@ -1,0 +1,232 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.12">
+  <POU Name="fb_Conveyor" Id="{eb3ee7af-f1fd-45a2-aa0b-905517ce554f}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK fb_Conveyor
+VAR_INPUT
+	bStart			: BOOL := FALSE;
+	bStop			: BOOL := FALSE;
+	bS1 AT %I* 		: BOOL := FALSE;					//sensor 1
+	bS2 AT %I* 		: BOOL := FALSE;					//sensor 2
+	bS3 AT %I* 		: BOOL := FALSE;					//sensor 3
+	bInVelocity		: BOOL;
+END_VAR
+
+VAR_OUTPUT
+	bAxis 			: BOOL;
+	nVelocity		: LREAL;
+	nAcceleration 	: LREAL;
+	nDeceleration 	: LREAL;
+	nDirection 		: INT	:= 0;				//conveyor direction
+END_VAR
+
+VAR
+	State			: INT	:=0;
+	bRapid			: BOOL	:= TRUE;			//velocity state
+	bHalt			: BOOL	:= FALSE;
+	timer 			: TON	:= (PT := T#1S);
+	nFast			: LREAL	:= 0.15;					//high velocity
+	nAcc			: LREAL	:= 0.02;				//acceleration
+	nDec			: LREAL	:= 0.02;				//deceleration
+	nSlow			: LREAL	:= 0.05;					//low velocity
+	nVstop			: LREAL	:= 0;					//zero velocity (stop/halt)
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[CASE State OF 
+	
+	0: //start 
+	
+		IF bStart AND NOT bStop THEN
+			State		:= 1; 
+		END_IF
+
+	
+	1:// check all sensors
+	
+		IF bS1 AND NOT bS2 AND NOT bS3 THEN
+			State	:= 6;
+			ELSE IF	bS2 AND NOT bS1 AND NOT bS3 THEN
+				State	:= 4;
+				ELSE IF bStop THEN
+					State := 8;
+					ELSE
+						State :=2;
+				END_IF
+			END_IF
+		END_IF
+			
+	2:	//motor positive fast
+	
+		timer(IN := TRUE);
+		IF timer.Q AND NOT bStop AND NOT bHalt THEN
+			bAxis:= TRUE; nVelocity := nFast; nAcceleration := nAcc; nDeceleration := nDec; nDirection := 1;
+			timer(IN := FALSE);
+			bRapid	:= TRUE;
+			State 	:= 3;
+			ELSE IF bHalt THEN
+					nVelocity := nVStop;
+					bHalt := FALSE;
+					timer(IN := FALSE);
+					State := 1;
+			END_IF
+		END_IF
+		
+		
+	3: // check sensor 2
+		
+		IF bS2	AND bRapid THEN
+			bHalt := TRUE;
+			nVelocity := nVStop;
+			bAxis:= FALSE;
+			bHalt := FALSE;
+			State := 4;
+			ELSE IF bS2 AND NOT bRapid THEN
+				bHalt := TRUE;
+				nVelocity := nVStop;
+				bAxis:= FALSE;
+				bHalt := FALSE;
+				State := 7;
+				ELSE IF bS2 THEN
+					bHalt := TRUE;
+					nVelocity := nVStop;
+					bAxis:= FALSE;
+					bHalt := FALSE;
+					State := 1;
+					ELSE IF bStop THEN
+						State := 8;
+					END_IF
+				END_IF
+			END_IF
+		END_IF
+		 
+		
+	4:	//motor positive slow from 3
+	
+		timer(IN := TRUE);
+		IF timer.Q  AND NOT bStop AND NOT bHalt THEN
+			bAxis:= TRUE; nVelocity := nSlow; nAcceleration := nAcc; nDeceleration := nDec; nDirection := 1; 
+			timer(IN := FALSE);
+			IF bInVelocity AND NOT bStop THEN
+				bInVelocity := TRUE;
+				bRapid	:= FALSE;
+				State 	:= 5;
+				ELSE IF bHalt THEN
+					nVelocity := nVStop;
+					State   := 1;
+					ELSE IF bStop THEN
+						State:= 8;
+					END_IF
+				END_IF
+			END_IF
+		END_IF
+		
+	5: //check sensor 1 (from 4)
+		
+		IF bS1 THEN
+			bHalt := TRUE;
+			nVelocity := nVStop;
+			bAxis:= FALSE;
+			bHalt := FALSE;
+			State := 6;
+			ELSE IF bStop THEN
+				State := 8;
+			END_IF
+		END_IF
+	
+		
+	6: // motor negative slow
+	
+		timer(IN := TRUE);
+		IF timer.Q AND NOT bStop AND NOT bHalt THEN
+			bAxis:= TRUE; nVelocity := nSlow; nDeceleration := nDec; nAcceleration := nAcc; nDirection := 0;
+			timer(IN := FALSE);
+			bRapid	:= FALSE;
+			State 	:= 3;
+			ELSE IF bHalt THEN
+				nVelocity := nVStop;
+				bHalt := FALSE;
+				timer(IN := FALSE);
+				State	:= 8;
+			END_IF
+		END_IF
+		
+	7:	//motor negative fast (from 3)
+		
+		timer(IN := TRUE);
+		IF timer.Q AND NOT bStop THEN
+			bAxis:= TRUE; nVelocity := nFast; nAcceleration := nAcc; 	nDeceleration := nDec; nDirection := 0;
+			timer(IN := FALSE);
+			bRapid	:= TRUE;
+			State 	:= 9;
+			ELSE IF bStop THEN
+					State:= 10;
+			END_IF
+		END_IF
+	
+	8: //emergency Stop 
+	
+		IF bStop THEN
+			nVelocity := nVStop;
+			State := 0;
+		END_IF
+		
+	9: //check sensor 3
+		
+		IF bS3 THEN
+			bHalt := TRUE;
+			nVelocity := nVStop;
+			bAxis:= FALSE;
+			bHalt := FALSE;
+			State := 2;
+			ELSE IF bHalt AND bS3 THEN
+				bHalt := TRUE;
+				nVelocity := nVStop;
+				bAxis:= FALSE;
+				bHalt := FALSE;
+				State := 2;
+				ELSE IF bStop THEN
+					State := 8;
+				END_IF
+			END_IF
+		END_IF
+			
+	10: //halt
+	
+		IF bHalt THEN
+			bHalt := TRUE;
+			nVelocity := nVStop;
+			bHalt := FALSE;
+			State := 1;
+		END_IF
+		
+	
+END_CASE
+	
+		]]></ST>
+    </Implementation>
+    <LineIds Name="fb_Conveyor">
+      <LineId Id="256" Count="44" />
+      <LineId Id="512" Count="0" />
+      <LineId Id="482" Count="0" />
+      <LineId Id="302" Count="3" />
+      <LineId Id="514" Count="0" />
+      <LineId Id="306" Count="4" />
+      <LineId Id="515" Count="0" />
+      <LineId Id="311" Count="15" />
+      <LineId Id="449" Count="1" />
+      <LineId Id="327" Count="9" />
+      <LineId Id="451" Count="0" />
+      <LineId Id="337" Count="5" />
+      <LineId Id="522" Count="0" />
+      <LineId Id="343" Count="1" />
+      <LineId Id="350" Count="3" />
+      <LineId Id="355" Count="42" />
+      <LineId Id="523" Count="0" />
+      <LineId Id="398" Count="4" />
+      <LineId Id="524" Count="0" />
+      <LineId Id="403" Count="17" />
+      <LineId Id="241" Count="1" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

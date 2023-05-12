@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.12">
+  <GVL Name="DataExchange" Id="{f915932f-d23a-4c8e-ae7f-f76b88b6370b}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+VAR_GLOBAL
+	bAxis			: BOOL;
+	bHalt			: BOOL;
+	nVelocity		: LREAL;
+	nAcceleration 	: LREAL;
+	nDeceleration 	: LREAL;
+	nDirection 		: INT	:= 0;			//conveyor direction
+	bInVelocity		: BOOL;
+	
+	bS1 AT %I* 		: BOOL;					//sensor 1
+	bS2 AT %I* 		: BOOL;					//sensor 2
+	bS3 AT %I* 		: BOOL;					//sensor 3
+END_VAR]]></Declaration>
+  </GVL>
+</TcPlcObject>
